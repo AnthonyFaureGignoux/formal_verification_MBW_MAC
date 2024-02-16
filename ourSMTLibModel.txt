@@ -1,0 +1,831 @@
+; ---------------
+; BASIC FUNCTIONS 
+; ---------------
+; Define the bit extension functions
+(define-fun ext8ToU32 ((x (_ BitVec 8) )) (_ BitVec 32)
+    ((_ zero_extend 24) x)
+)
+
+(define-fun ext8ToU16 ((x (_ BitVec 8) )) (_ BitVec 16)
+    ((_ zero_extend 8) x)
+)
+
+(define-fun ext16ToU32 ((x (_ BitVec 16) )) (_ BitVec 32)
+    ((_ zero_extend 16) x)
+)
+
+(define-fun ext8ToS32 ((x (_ BitVec 8) )) (_ BitVec 32)
+    ((_ sign_extend 24) x)
+)
+
+(define-fun ext8ToS16 ((x (_ BitVec 8) )) (_ BitVec 16)
+    ((_ sign_extend 8) x)
+)
+
+(define-fun ext16ToS32 ((x (_ BitVec 16) )) (_ BitVec 32)
+    ((_ sign_extend 16) x)
+)
+
+; Define the multiplication functions
+(define-fun mul32 
+    (
+        (x (_ BitVec 8))
+        (y (_ BitVec 8))
+        (xSigned Bool)
+        (ySigned Bool)
+    )
+    (_ BitVec 32)
+    (bvmul
+        (ite xSigned (ext8ToS32 x) (ext8ToU32 x))
+        (ite ySigned (ext8ToS32 y) (ext8ToU32 y))
+    )
+)
+
+; Define the multiplier (reference)
+(define-fun mul16
+    (
+        (x (_ BitVec 8))
+        (y (_ BitVec 8))
+        (xSigned Bool)
+        (ySigned Bool)
+    )
+    (_ BitVec 16)
+    (bvmul
+        (ite xSigned (ext8ToS16 x) (ext8ToU16 x))
+        (ite ySigned (ext8ToS16 y) (ext8ToU16 y))
+    )
+)
+
+; ---------------------------
+; REFERENCE COMPUTATION modes
+; ---------------------------
+; Define the Full-Precision computation mode (reference)
+(define-fun FP 
+    (
+        (a_h (_ BitVec 8))
+        (a_l (_ BitVec 8))
+        (b_h (_ BitVec 8))
+        (b_l (_ BitVec 8))
+    )
+    (_ BitVec 32)
+    (bvadd 
+        (bvshl (mul32 a_h b_h true true) #x00000010)
+        (bvshl 
+            (bvadd (mul32 a_h b_l true false) (mul32 a_l b_h false true))
+            #x00000008 )
+        (mul32 a_l b_l false false)
+    )
+)
+
+; Define the Half-Precision computation without SP (reference)
+(define-fun HP_NSP 
+    (
+        (a_h (_ BitVec 8))
+        (a_l (_ BitVec 8))
+        (b_h (_ BitVec 8))
+        (b_l (_ BitVec 8))
+    )
+    (_ BitVec 32)
+    (bvadd 
+        (bvshl (mul32 a_h b_h true true) #x00000010)
+        (ext16ToU32 (mul16 a_l b_l true true))
+    )
+)
+
+; Define the Half-Precision computation with SP (reference)
+(define-fun HP_SP 
+    (
+        (a_h (_ BitVec 8))
+        (a_l (_ BitVec 8))
+        (b_h (_ BitVec 8))
+        (b_l (_ BitVec 8))
+    )
+    (_ BitVec 32)
+    (bvadd 
+        (bvshl (mul32 b_h a_l true true) #x00000010)
+        (ext16ToU32 (mul16 a_h b_l true true))
+    )
+)
+
+; --------------------------------------
+; NOMINAL MULTIPLICATION STAGE MODELLING
+; --------------------------------------
+; Model the multiplier in: (a, b, e, aSigned, bSigned) => out: M (16-bit vector)
+(define-fun M
+    (
+        (a (_ BitVec 8))
+        (b (_ BitVec 8))
+        (e Bool)
+        (aSigned Bool)
+        (bSigned Bool)
+    )
+    (_ BitVec 16)
+    (ite e (mul16 a b aSigned bSigned) #x0000)
+)
+
+; Model the multiplier in: (a, b, e, aSigned, bSigned) => out: a_i (8-bit vector)
+(define-fun a_1 
+    (
+        (a_h (_ BitVec 8))
+        (a_l (_ BitVec 8))
+        (SP Bool)
+    )
+    (_ BitVec 8)
+    (ite SP a_l a_h)
+)
+
+(define-fun a_0 
+    (
+        (a_h (_ BitVec 8))
+        (a_l (_ BitVec 8))
+        (SP Bool)
+    )
+    (_ BitVec 8)
+    (ite SP a_h a_l)
+)
+
+(define-fun b_1 
+    (
+        (b_h (_ BitVec 8))
+        (b_l (_ BitVec 8))
+        (SP Bool)
+    )
+    (_ BitVec 8)
+    b_h
+)
+
+(define-fun b_0 
+    (
+        (b_h (_ BitVec 8))
+        (b_l (_ BitVec 8))
+        (SP Bool)
+    )
+    (_ BitVec 8)
+    b_l
+)
+
+; ----------------------------
+; BEGINING OF THE MODIFICATION
+; ----------------------------
+; Model the partial products - intermediate results connection (dynamic link) 
+;    in: (M_ij INV) => out: M_x (32-bit vector)
+(define-fun M_l 
+    (
+        (M_00_r (_ BitVec 16))
+        (M_10_r (_ BitVec 16))
+        (INV Bool)
+    )
+    (_ BitVec 32)
+    (ext16ToU32 (ite INV M_10_r M_00_r))
+)
+
+(define-fun M_h 
+    (
+        (M_01_r (_ BitVec 16))
+        (M_11_r (_ BitVec 16))
+        (INV Bool)
+    )
+    (_ BitVec 32)
+    (ext16ToS32 (ite INV M_01_r M_11_r))
+)
+
+(define-fun M_m
+    (
+        (M_00_r (_ BitVec 16))
+        (M_01_r (_ BitVec 16))
+        (M_10_r (_ BitVec 16))
+        (M_11_r (_ BitVec 16))
+        (INV Bool)
+    )
+    (_ BitVec 32)
+    (ite INV 
+        (bvadd (ext16ToS32 M_11_r) (ext16ToS32 M_00_r))
+        (bvadd (ext16ToS32 M_10_r) (ext16ToS32 M_01_r))
+    )
+)
+; -----------------------
+; END OF THE MODIFICATION
+; -----------------------
+
+; Model the final result in: (M_h, M_m, M_l) => out: M_r (32-bit vector)
+(define-fun M_r 
+    (
+        (M_h_r (_ BitVec 32))
+        (M_m_r (_ BitVec 32))
+        (M_l_r (_ BitVec 32))
+    )
+    (_ BitVec 32)
+    (bvadd 
+        (bvshl M_h_r #x00000010) ; 2^16
+        (bvshl M_m_r #x00000008) ; 2^8
+        M_l_r                    ; 2^0
+    )
+)
+
+
+; ------------------------------
+; THE MULTIPLICATION STAGE MODEL
+; ------------------------------
+; Model the full MBWMAC
+;    in: (ah, al, bh, bl, e_00, e_01, e_10, e_11, a1Signed, a0Signed, b1Signed, b0Signed, c_acc, SP, INV) 
+;     => out: MBWMAC (32-bit vector)
+(define-fun MBWMAC
+    (
+        (a_h (_ BitVec 8))
+        (a_l (_ BitVec 8))
+        (b_h (_ BitVec 8))
+        (b_l (_ BitVec 8))
+        (e_00 Bool)
+        (e_01 Bool)
+        (e_10 Bool)
+        (e_11 Bool)
+        (a1Signed Bool)
+        (a0Signed Bool)
+        (b1Signed Bool)
+        (b0Signed Bool)
+        (c_acc Bool)
+        (SP Bool)
+        (INV Bool)
+    )
+    (_ BitVec 32)
+    (let 
+        (
+            (M_00 
+                (M
+                    (a_0 a_h a_l SP)
+                    (b_0 b_h b_l SP)
+                    e_00
+                    a0Signed
+                    b0Signed
+                )
+            )
+            (M_01 
+                (M
+                    (a_0 a_h a_l SP)
+                    (b_1 b_h b_l SP)
+                    e_01
+                    a0Signed
+                    b1Signed
+                )
+            )
+            (M_10 
+                (M
+                    (a_1 a_h a_l SP)
+                    (b_0 b_h b_l SP)
+                    e_10
+                    a1Signed
+                    b0Signed
+                )
+            )
+            (M_11 
+                (M
+                    (a_1 a_h a_l SP)
+                    (b_1 b_h b_l SP)
+                    e_11
+                    a1Signed
+                    b1Signed
+                )
+            )
+        )
+        (M_r ; Modification of M_r (depends on INV)
+            (M_h M_01 M_11 INV)
+            (M_m M_00 M_01 M_10 M_11 INV)
+            (M_l M_00 M_10 INV)
+        )
+    )
+)
+
+; ----------------------------
+; DECLARATION OF THE CONSTANTS
+; ----------------------------
+; Declare any bitvector 
+(declare-const a_h (_ BitVec 8))
+(declare-const a_l (_ BitVec 8))
+(declare-const b_h (_ BitVec 8))
+(declare-const b_l (_ BitVec 8))
+
+; Declare any configuration boolean in Conf
+(declare-const e_00 Bool)
+(declare-const e_01 Bool)
+(declare-const e_10 Bool)
+(declare-const e_11 Bool)
+(declare-const a1Signed Bool)
+(declare-const a0Signed Bool)
+(declare-const b1Signed Bool)
+(declare-const b0Signed Bool)
+(declare-const c_acc Bool)
+(declare-const SP Bool)
+(declare-const INV Bool) ; New constant to declare
+
+
+; ----------------------------
+; INSTANCIATION OF THE CIRCUIT
+; ----------------------------
+; The operations ah, al, bh, bl, e_00, e_01, e_10, e_11, a1Signed, a0Signed, b1Signed, b0Signed, c_acc, SP, INV
+(define-const result (_ BitVec 32) 
+    (MBWMAC a_h a_l b_h b_l e_00 e_01 e_10 e_11 a1Signed a0Signed b1Signed b0Signed c_acc SP INV)
+)
+
+; For the second computation of the FP computation
+(define-const result2 (_ BitVec 32) 
+    (MBWMAC a_h a_l b_h b_l e_00 e_01 e_10 e_11 a1Signed a0Signed b1Signed b0Signed c_acc SP INV)
+)
+
+; Util constant
+; ----------------------
+; THE CONFIGURATION CONF
+; ----------------------
+; Nominal configuration (add not INV)
+(define-const Conf_FP Bool
+    (and e_00 e_01 e_10 e_11 a1Signed (not a0Signed) b1Signed (not b0Signed) (not c_acc) (not SP) (not INV))
+)
+
+(define-const Conf_HP_NSP Bool
+    (and e_00 (not e_01) (not e_10) e_11 a1Signed a0Signed b1Signed b0Signed c_acc (not SP) (not INV))
+)
+
+(define-const Conf_HP_SP Bool
+    (and e_00 (not e_01) (not e_10) e_11 a1Signed a0Signed b1Signed b0Signed c_acc SP (not INV))
+)
+
+; Faulty configuration (for FP)
+(define-const M_00_Conf_FP_1 Bool
+    (and (not e_00) e_01 e_10 e_11 a1Signed (not a0Signed) b1Signed (not b0Signed) (not c_acc) (not SP) (not INV))
+)
+(define-const M_00_Conf_FP_2 Bool
+    (and (not e_00) (not e_01) e_10 (not e_11) (not a1Signed) a0Signed b1Signed (not b0Signed) (not c_acc) SP INV)
+)
+
+(define-const M_01_Conf_FP_1 Bool
+    (and e_00 (not e_01) e_10 e_11 a1Signed (not a0Signed) b1Signed (not b0Signed) (not c_acc) (not SP) (not INV))
+)
+(define-const M_01_Conf_FP_2 Bool
+    (and (not e_00) (not e_01) (not e_10) e_11 (not a1Signed) a0Signed b1Signed (not b0Signed) (not c_acc) SP INV)
+)
+
+(define-const M_10_Conf_FP_1 Bool
+    (and e_00 e_01 (not e_10) e_11 a1Signed (not a0Signed) b1Signed (not b0Signed) (not c_acc) (not SP) (not INV))
+)
+(define-const M_10_Conf_FP_2 Bool
+    (and e_00 (not e_01) (not e_10) (not e_11) (not a1Signed) a0Signed b1Signed (not b0Signed) (not c_acc) SP INV)
+)
+
+(define-const M_11_Conf_FP_1 Bool
+    (and e_00 e_01 e_10 (not e_11) a1Signed (not a0Signed) b1Signed (not b0Signed) (not c_acc) (not SP) (not INV))
+)
+(define-const M_11_Conf_FP_2 Bool
+    (and (not e_00) e_01 (not e_10) (not e_11) (not a1Signed) a0Signed b1Signed (not b0Signed) (not c_acc) SP INV)
+)
+
+; Faulty configuration (for HP)
+(define-const M_ii_Conf_HP_NSP Bool
+    (and (not e_00) e_01 e_10 (not e_11) a1Signed a0Signed b1Signed b0Signed c_acc SP INV)
+)
+
+(define-const M_ii_Conf_HP_SP Bool
+    (and (not e_00) e_01 e_10 (not e_11) a1Signed a0Signed b1Signed b0Signed c_acc (not SP) INV)
+)
+
+; ----------------------
+; START THE TESTING AREA
+; ----------------------
+; -------------------------------------
+; Testing extended MBWMAC in error-free (check the design is still functional)
+; -------------------------------------
+(echo "[INFO] Analysis in the nominal case for signed integer")
+
+; Testing configuration for FP
+; ----------------------------
+(push) ; Push 0
+(assert Conf_FP)
+
+; Testing a particular example (design is functional)
+(push) ; Push 1
+(assert (= a_h #x33))
+(assert (= a_l #xCC))
+(assert (= b_h #x42))
+(assert (= b_l #x18))
+
+(assert (= (a_1 a_h a_l SP) #x33))
+(assert (= (a_0 a_h a_l SP) #xCC))
+(assert (= (b_1 b_h b_l SP) #x42))
+(assert (= (b_0 b_h b_l SP) #x18))
+
+(assert (= (M_l #x1320 #x04C8 INV) #x00001320))
+(assert (= (M_h #x3498 #x0D26 INV) #x00000D26))
+(assert (= (M_m #x1320 #x3498 #x04C8 #x0D26 INV) #x00003960))
+
+(assert (= (M_r #x00000D26 #x00003960 #x00001320) #x0D5F7320))
+
+(assert (= result #x0D5F7320))
+
+(assert (= result (FP a_h a_l b_h b_l)))
+
+(echo "[INFO] Trying FP on a valid example, should be SAT and it is: ")
+(check-sat) 
+(pop) ; Reset up to Push 1
+
+; Verify there is no inconsistent case (shall be unsat)
+(push) ; Push 2
+(assert (not (= result (FP a_h a_l b_h b_l))))
+(echo "[INFO] Proving that the configuration is equivalent to FP, should be UNSAT and it is: ")
+(check-sat)
+(pop) ; Reset up to Push 2 (remove soudness proof assertion)
+
+; Empty the assert queue
+(pop) ; Reset up to Push 0 (going out of FP mode)
+
+; Testing configuration for HP_NSP
+; --------------------------------
+(push) ; Push 3
+(assert Conf_HP_NSP)
+
+; Testing a particular example (design is functional)
+(push) ; Push 4
+(assert (= a_h #x33))
+(assert (= a_l #xCC))
+(assert (= b_h #x42))
+(assert (= b_l #x18))
+
+(assert (= (a_1 a_h a_l SP) #x33))
+(assert (= (a_0 a_h a_l SP) #xCC))
+(assert (= (b_1 b_h b_l SP) #x42))
+(assert (= (b_0 b_h b_l SP) #x18))
+
+(assert (= (M_l #xFB20 #x0000 INV) #x0000FB20))
+(assert (= (M_h #x0000 #x0D26 INV) #x00000D26))
+(assert (= (M_m #xFB20 #x0000 #x0000 #x0D26 INV) #x00000000))
+
+(assert (= (M_r #x00000D26 #x00000000 #x0000FB20) #x0D26FB20))
+
+(assert (= result #x0D26FB20))
+
+(assert (= result (HP_NSP a_h a_l b_h b_l)))
+
+(echo "[INFO] Trying HP_NSP on a valid example, should be SAT and it is: ")
+(check-sat)
+(pop) ; Reset up to Push 4
+
+; Verify there is no inconsistent case (shall be unsat)
+(push) ; Push 5
+(assert (not (= result (HP_NSP a_h a_l b_h b_l))))
+(echo "[INFO] Proving that the configuration is equivalent to HP_NSP, should be UNSAT and it is: ")
+(check-sat)
+(pop) ; Reset up to Push 5
+
+; Empty the assert queue
+(pop) ; Reset up to Push 3
+
+; Testing configuration for HP_SP
+; -------------------------------
+(push) ; Push 6
+(assert Conf_HP_SP)
+
+; Testing a particular example (design is functional)
+(push) ; Push 7
+(assert (= a_h #x33))
+(assert (= a_l #xCC))
+(assert (= b_h #x42))
+(assert (= b_l #x18))
+
+(assert (= (a_1 a_h a_l SP) #xCC))
+(assert (= (a_0 a_h a_l SP) #x33))
+(assert (= (b_1 b_h b_l SP) #x42))
+(assert (= (b_0 b_h b_l SP) #x18))
+
+(assert (= (M_l #x04C8 #x0000 INV) #x000004C8))
+(assert (= (M_h #x0000 #xF298 INV) #xFFFFF298))
+(assert (= (M_m #x04C8 #x0000 #x0000 #x3498 INV) #x00000000))
+
+(assert (= (M_r #xFFFFF298 #x00000000 #x000004C8) #xF29804C8))
+
+(assert (= result #xF29804C8))
+
+(assert (= result (HP_SP a_h a_l b_h b_l)))
+
+(echo "[INFO] Trying HP_SP on a valid example, should be SAT and it is: ")
+(check-sat)
+(pop) ; Reset up to Push 7
+
+; Verify there is no inconsistent case (shall be unsat)
+(push) ; Push 8
+(assert (not (= result (HP_SP a_h a_l b_h b_l))))
+(echo "[INFO] Proving that the configuration is equivalent to HP_SP, should be UNSAT and it is: ")
+(check-sat)
+(pop) ; Reset up to Push 8
+
+; Empty the assert queue
+(pop) ; Reset up to Push 6
+
+; ------------------------------------
+; Testing extended MBWMAC with a fault 
+; ------------------------------------
+(echo "[INFO] Check in faulty case")
+
+(push) ; Push 9
+; Define the faulty multiplier (with inhibition)
+(declare-const faulty (_ BitVec 2))
+(assert
+    (ite (= faulty #b00) (not e_00)
+        (ite (= faulty #b01) (not e_01)
+            (ite (= faulty #b10) (not e_10)
+                (not e_11)
+            )
+        )    
+    )
+)
+
+
+; Check HP when the diagonal is okay
+; ----------------------------------
+(push) ; Push 10
+(assert (or (= faulty #b01) (= faulty #b10)))
+
+; Testing faulty configuration for HP_NSP (with diagonal okay)
+; ---------------------------------------
+(push) ; Push 11
+(assert Conf_HP_NSP)
+
+; Testing a particular example (design is functional)
+(push) ; Push 12
+(assert (= a_h #x33))
+(assert (= a_l #xCC))
+(assert (= b_h #x42))
+(assert (= b_l #x18))
+(assert (= result (HP_NSP a_h a_l b_h b_l)))
+(echo "[INFO] When non diag unit is faulty test the computation of HP_NSP on a specific example, should be SAT and it is: ")
+(check-sat)
+(pop) ; Reset up to Push 12
+
+; Verify there is no inconsistent case (shall be unsat)
+(push) ; Push 13
+(assert (not (= result (HP_NSP a_h a_l b_h b_l))))
+(echo "[INFO] When non diag unit is faulty proving that computation is equivalent to HP_NSP, should be UNSAT and it is: ")
+(check-sat) 
+(pop) ; Reset up to Push 13
+
+; Clear the HP_NSP conf (keep diagonal ok)
+(pop) ; Reset up to Push 11
+
+; Testing faulty configuration for HP_SP (with diagonal okay)
+; --------------------------------------
+(push) ; Push 14
+(assert Conf_HP_SP)
+
+; Testing a particular example (design is functional)
+(push) ; Push 15
+(assert (= a_h #x33))
+(assert (= a_l #xCC))
+(assert (= b_h #x42))
+(assert (= b_l #x18))
+(assert (= result (HP_SP a_h a_l b_h b_l)))
+(echo "[INFO] When non diag unit is faulty test the computation of HP_SP on a specific example, should be SAT and it is: ")
+(check-sat)
+(pop) ; Reset up to Push 15
+
+; Verify there is no inconsistent case (shall be unsat)
+(push) ; Push 16
+(assert (not (= result (HP_SP a_h a_l b_h b_l))))
+(echo "[INFO] When non diag unit is faulty proving that computation is equivalent to HP_SP, should be UNSAT and it is: ")
+(check-sat)
+(pop) ; Reset up to Push 16
+
+; Clear the HP_SP conf (keep diagonal ok)
+(pop) ; Reset up to Push 14
+; Clear the diagonal is ok assumption
+(pop) ; Reset up to Push 10
+
+
+; Check HP when the diagonal is not okay
+; --------------------------------------
+(push) ; Push 17
+(assert (or (= faulty #b00) (= faulty #b11)))
+
+; Testing faulty configuration for HP_NSP (with diagonal not okay)
+; ---------------------------------------
+(push) ; Push 18
+(assert M_ii_Conf_HP_NSP)
+
+; Testing a particular example (design is functional)
+(push) ; Push 19
+(assert (= a_h #x33))
+(assert (= a_l #xCC))
+(assert (= b_h #x42))
+(assert (= b_l #x18))
+(assert (= result (HP_NSP a_h a_l b_h b_l)))
+(echo "[INFO] When diag unit is faulty test the computation of HP_NSP on a specific example, should be SAT and it is: ")
+(check-sat)
+(pop) ; Reset up to Push 19
+
+; Verify there is no inconsistent case (shall be unsat)
+(push) ; Push 20
+(assert (not (= result (HP_NSP a_h a_l b_h b_l))))
+(echo "[INFO] When diag unit is faulty proving that computation is equivalent to HP_NSP, should be UNSAT and it is: ")
+(check-sat)
+(pop) ; Reset up to Push 20
+
+; Clear the HP_NSP conf (keep diagonal not ok)
+(pop) ; Reset up to Push 18
+
+; Testing faulty configuration for HP_SP (with diagonal okay)
+; --------------------------------------
+(push) ; Push 21
+(assert M_ii_Conf_HP_SP )
+
+; Testing a particular example (design is functional)
+(push) ; Push 22
+(assert (= a_h #x33))
+(assert (= a_l #xCC))
+(assert (= b_h #x42))
+(assert (= b_l #x18))
+(assert (= result (HP_SP a_h a_l b_h b_l)))
+(echo "[INFO] When diag unit is faulty test the computation of HP_SP on a specific example, should be SAT and it is: ")
+(check-sat)
+(pop) ; Reset up to Push 22
+
+; Verify there is no inconsistent case (shall be unsat)
+(push) ; Push 23
+(assert (not (= result (HP_SP a_h a_l b_h b_l))))
+(echo "[INFO] When non diag unit is faulty proving that computation is equivalent to HP_SP, should be UNSAT and it is: ")
+(check-sat)
+(pop) ; Reset up to Push 23
+
+; Clear the HP_SP conf (keep diagonal not ok)
+(pop) ; Reset up to Push 21
+; Clear the diagonal is not ok assumption
+(pop) ; Reset up to Push 17 (remain only Push 9)
+
+; --------------------------------------
+
+; Testing faulty configuration for FP
+; -----------------------------------
+(echo "[INFO] When a unit is faulty proving that computation is equivalent to FP")
+;(assert (not (= (bvadd result result2) (FP a_h a_l b_h b_l)))) ; => to difficult check simpler property
+
+; M_00 is faulty (FP)
+; --------------
+(push) ; Push 24
+(assert (= faulty #b00))
+
+; 1st computation
+(echo "[INFO] The first computation is correct when M00 is faulty, should be UNSAT and it is:")
+(push) ; Push 25
+(assert M_00_Conf_FP_1)
+
+(assert 
+   (not 
+        (= 
+            (FP a_h a_l b_h b_l) 
+            (bvadd result (bvmul (ext8ToU32 a_l) (ext8ToU32 b_l)))
+        )
+    )
+)
+(check-sat)
+(pop) ; Reset up to Push 25
+
+; 2nd computation
+(echo "[INFO] The second computation is correct when M00 is faulty, should be UNSAT and it is:")
+(push) ; Push 26
+(assert M_00_Conf_FP_2)
+
+(assert 
+    (not 
+        (= 
+            result2 
+            (bvmul (ext8ToU32 a_l) (ext8ToU32 b_l))
+        )
+    )
+)
+(check-sat)
+(pop) ; Reset up to Push 26
+
+; Clear the faulty multiplier
+(pop) ; Reset up to Push 24
+
+
+; M_01 is faulty (FP)
+; --------------
+(push) ; Push 27
+(assert (= faulty #b01))
+
+; 1st computation
+(echo "[INFO] The first computation is correct when M01 is faulty, should be UNSAT and it is:")
+(push) ; Push 28
+(assert M_01_Conf_FP_1)
+
+(assert 
+    (not 
+        (= 
+            (FP a_h a_l b_h b_l) 
+            (bvadd result (bvshl (bvmul (ext8ToU32 a_l) (ext8ToS32 b_h)) #x00000008))
+        )
+    )
+)
+(check-sat)
+(pop) ; Reset up to Push 28
+
+; 2nd computation
+(echo "[INFO] The second computation is correct when M01 is faulty, should be UNSAT and it is:")
+(push) ; Push 29
+(assert M_01_Conf_FP_2)
+
+(assert 
+    (not 
+        (= 
+            result2 
+            (bvshl (bvmul (ext8ToU32 a_l) (ext8ToS32 b_h)) #x00000008)
+        )
+    )
+)
+(check-sat)
+(pop) ; Reset up to Push 29
+
+; Clear the faulty multiplier
+(pop) ; Reset up to Push 27
+
+
+; M_10 is faulty (FP)
+; --------------
+(push) ; Push 30
+(assert (= faulty #b10))
+
+; 1st computation
+(echo "[INFO] The first computation is correct when M10 is faulty, should be UNSAT and it is:")
+(push) ; Push 31
+(assert M_10_Conf_FP_1)
+
+(assert 
+    (not 
+        (= 
+            (FP a_h a_l b_h b_l) 
+            (bvadd result (bvshl (bvmul (ext8ToS32 a_h) (ext8ToU32 b_l)) #x00000008))
+        )
+    )
+)
+(check-sat)
+(pop) ; Reset up to Push 31
+
+; 2nd computation
+(echo "[INFO] The second computation is correct when M10 is faulty, should be UNSAT and it is:")
+(push) ; Push 32
+(assert M_10_Conf_FP_2)
+
+(assert 
+    (not 
+        (= 
+            result2 
+            (bvshl (bvmul (ext8ToS32 a_h) (ext8ToU32 b_l)) #x00000008)
+        )
+    )
+)
+(check-sat)
+(pop) ; Reset up to Push 32
+
+; Clear the faulty multiplier
+(pop) ; Reset up to Push 30
+
+
+; M_11 is faulty (FP)
+; --------------
+(push) ; Push 33
+(assert (= faulty #b11))
+
+; 1st computation
+(echo "[INFO] The first computation is correct when M11 is faulty, should be UNSAT and it is:")
+(push) ; Push 34
+(assert M_11_Conf_FP_1)
+
+(assert 
+    (not 
+        (= 
+            (FP a_h a_l b_h b_l) 
+            (bvadd result (bvshl (bvmul (ext8ToS32 a_h) (ext8ToS32 b_h)) #x00000010))
+        )
+    )
+)
+(check-sat)
+(pop) ; Reset up to Push 34
+
+; 2nd computation
+(echo "[INFO] The second computation is correct when M11 is faulty, should be UNSAT and it is:")
+(push) ; Push 35
+(assert M_11_Conf_FP_2)
+
+(assert 
+    (not 
+        (= 
+            result2 
+            (bvshl (bvmul (ext8ToS32 a_h) (ext8ToS32 b_h)) #x00000010)
+        )
+    )
+)
+(check-sat)
+(pop) ; Reset up to Push 35
+
+; Clear the faulty multiplier
+(pop) ; Reset up to Push 33
+
+; -------------------
+; END OF VERIFICATION  
+; -------------------
+(echo "[INFO] End of the verification.")
