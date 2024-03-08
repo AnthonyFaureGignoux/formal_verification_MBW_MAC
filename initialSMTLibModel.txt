@@ -107,10 +107,10 @@
     )
 )
 
-; --------------------------------------
-; NOMINAL MULTIPLICATION STAGE MODELLING
-; --------------------------------------
-; Model the multiplier in: (a, b, e, aSigned, bSigned) => out: M (16-bit vector)
+; ------------------------
+; NOMINAL STAGES MODELLING
+; ------------------------
+; Model the MULTIPLIER in: (a, b, e, aSigned, bSigned) => out: M (16-bit vector)
 (define-fun M
     (
         (a (_ BitVec 8))
@@ -123,7 +123,7 @@
     (ite e (mul16 a b aSigned bSigned) #x0000)
 )
 
-; Model the multiplier in: (a, b, e, aSigned, bSigned) => out: a_i (8-bit vector)
+; Model the PERMUTATION STAGE in: (a_h, a_l, SP) => out: a_i (8-bit vector)
 (define-fun a_1 
     (
         (a_h (_ BitVec 8))
@@ -164,7 +164,7 @@
     b_l
 )
 
-; Model the partial products - intermediate results connection (hardwired) 
+; Model the PARTIAL PRODUCTS - INTERMEDIATE RESULTS connection (hardwired) 
 ;    in: (M_ij) => out: M_x (32-bit vector)
 (define-fun M_l 
     (
@@ -191,7 +191,7 @@
     (bvadd (ext16ToS32 M_01_r) (ext16ToS32 M_10_r))
 )
 
-; Model the final result in: (M_h, M_m, M_l) => out: M_r (32-bit vector)
+; Model the FINAL RESULT in: (M_h, M_m, M_l) => out: M_r (32-bit vector)
 (define-fun M_r 
     (
         (M_h_r (_ BitVec 32))
@@ -207,9 +207,9 @@
 )
 
 
-; ------------------------------
-; THE MULTIPLICATION STAGE MODEL
-; ------------------------------
+; -------------------------------------------------------
+; THE MBW MAC MODEL without accumulation and shift stages
+; -------------------------------------------------------
 ; Model the full MBWMAC
 ;    in: (ah, al, bh, bl, e_00, e_01, e_10, e_11, a1Signed, a0Signed, b1Signed, b0Signed, c_acc, SP) => out: MBWMAC (32-bit vector)
 (define-fun MBWMAC
