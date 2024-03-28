@@ -1,0 +1,9 @@
+# Usage: !pip install -r requirements.txt
+
+torch>=2.0.0
+#torchsummary>=1.5.1
+torchvision>=0.15.1
+torchviz>=0.0.2
+
+prettytable>=3.6.0
+numpy
