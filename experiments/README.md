@@ -12,8 +12,7 @@ The symbol `$` denotes terminal commands.
 
 2. Run *main_file.py*:
 `$ python main_file.py`
-If you want to record the execution within a file, you may prefer the command:
-`$ python main_file.py > result.txt`
+If required, it can write the result into `result.txt` file.
 
 3. Interact with the program to set the parameters
     * Model selection: either Resnet-18 or VGG-16
