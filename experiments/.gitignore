@@ -1,0 +1,5 @@
+# Ignore generated python files
+/__pycache__/
+
+# Ignore result.txt file
+result.txt
