@@ -26,25 +26,40 @@ def main():
     ###################
     # Model selection
     user_model = input("Tap 'r' to use ResNet-18, tap 'v' to use VGG-16\n")
-    # Print model details
-    user_print_model = input("Do you want to print model? ('y' or 'n')\n")
+    if user_model not in ['r', 'v']:
+        raise ValueError('\nUser input does not fit expected input!\n')
+    # Print ResNet model details
+    user_get_model = input("Do you want to print model? ('y' or 'n')\n")
+    if user_get_model not in ['y', 'n']:
+        raise ValueError('\nUser input does not fit expected input!\n')
+    # Print detailed table
     user_show_dict = input("Do you want to print model data dictionary? If yes, which MAC_profile: \n Nominal: \t '0' \n Ours: \t\t '1' \n OQA: \t\t '2' \n None: \t\t 'n'\n")
+    if user_show_dict not in ['0', '1', '2', 'n']:
+        raise ValueError('\nUser input does not fit expected input!\n')
+    # Save the result into result.txt
+    user_record = input("Do you want to save the result into 'result.txt'? ('y' or 'n')\n")
+    if user_record not in ['y', 'n']:
+        raise ValueError('\nUser input does not fit expected input!\n')
 
+    # Variable declaration
+    ######################
+    text_to_write = ""
 
     # Model declaration
     ###################
     if (user_model == 'r'):
         model = torchvision.models.resnet18()
         model_name = "Resnet-18"
-    elif (user_model == 'v'):
+    else:
         model = torchvision.models.vgg16()
         model_name = "VGG-16"
-    else:
-        raise ValueError('\nUser input does not fit expected input (0 or 1)\n')
+
+    # Record the model name:
+    text_to_write += "Model: " + str(model_name) + "\n"
 
     # Print the model if required
-    if (user_print_model == 'y'):
-        print(f"Model {model_name}: \n{model} \n")
+    if (user_get_model == 'y'):
+        text_to_write += "\nModel details: \n" + str(model) + "\n"
     else: # Do nothing
         pass
     
@@ -66,21 +81,19 @@ def main():
     
     # Print the dictionary if required:
     if (user_show_dict == '0'): # Nominal
-        print(f"\nThe data dictionary with nominal MAC profile: \n\t \
-              N_memory_access/MAC = {nominal_profile.N_memory_access} \t N_operations/MAC = {nominal_profile.N_operations} \t N_cycles/MAC = {nominal_profile.N_cycles}")
-        print_dict(nominal_profiled_dict)
+        text_to_write += f"\nThe data dictionary with nominal MAC profile: \n\t \
+            N_memory_access/MAC = {nominal_profile.N_memory_access} \t N_operations/MAC = {nominal_profile.N_operations} \t N_cycles/MAC = {nominal_profile.N_cycles} \n"
+        text_to_write += print_dict(nominal_profiled_dict) + "\n"
     elif (user_show_dict == '1'): # Ours
-        print(f"\nThe data dictionary with our MAC profile: \n\t \
-              N_memory_access/MAC = {our_profile.N_memory_access} \t N_operations/MAC = {our_profile.N_operations} \t N_cycles/MAC = {our_profile.N_cycles}")
-        print_dict(our_profiled_dict)
+        text_to_write += f"\nThe data dictionary with our MAC profile: \n\t \
+              N_memory_access/MAC = {our_profile.N_memory_access} \t N_operations/MAC = {our_profile.N_operations} \t N_cycles/MAC = {our_profile.N_cycles} \n"
+        text_to_write += print_dict(our_profiled_dict) + "\n"
     elif (user_show_dict == '2'): # OQA
-        print(f"\nThe data dictionary with OQA MAC profile: \n\t \
-              N_memory_access/MAC = {oqa_profile.N_memory_access} \t N_operations/MAC = {oqa_profile.N_operations} \t N_cycles/MAC = {oqa_profile.N_cycles}")
-        print_dict(oqa_profiled_dict)
-    elif (user_show_dict == 'n'): # Do nothing
+        text_to_write += f"\nThe data dictionary with OQA MAC profile: \n\t \
+              N_memory_access/MAC = {oqa_profile.N_memory_access} \t N_operations/MAC = {oqa_profile.N_operations} \t N_cycles/MAC = {oqa_profile.N_cycles} \n"
+        text_to_write += print_dict(oqa_profiled_dict) + "\n"
+    else: # Do nothing
         pass
-    else: # Unexpected input
-        raise ValueError('\nUser input does not fit expected input\n')
     
     # Compare the dictionaries
     ##########################
@@ -88,8 +101,23 @@ def main():
     comparison_summary = compare_profile(nominal_profiled_dict, our_profiled_dict, oqa_profiled_dict)
 
     # Print the comparison
-    print(f"\n\nCOMPARISON SUMMARY for {model_name}: \n")
-    print_comparison(comparison_summary)
+    text_to_write += f"\n\nCOMPARISON SUMMARY for {model_name}: \n"
+    text_to_write += print_comparison(comparison_summary) + "\n"
+
+    # Print and record the result
+    #############################
+    # Print (in any case)
+    print(text_to_write)
+
+    # Record if required:
+    if (user_record == 'y'):
+        # Create or overwrite result.txt
+        f = open("result.txt", "wt")
+        # Write the content
+        f.write(text_to_write)
+        # Close the file
+        f.close()
+
 
 ###########
 # Execution
