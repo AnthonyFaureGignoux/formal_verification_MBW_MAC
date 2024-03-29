@@ -1,6 +1,6 @@
 # Theoretical analysis
 
-We compare our strategy to OQA strategy.
+We compare our strategy to OQA strategy: https://link.springer.com/chapter/10.1007/978-3-031-40923-3_18 
 
 ## Setup
 
