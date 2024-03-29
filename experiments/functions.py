@@ -259,7 +259,7 @@ def print_dict(profiled_dict):
     Input:
         > profiled_dict: the dictionary updated with MAC_profile (function: get_profile)
     Output:
-        => print data dictionnary for the given MAC profile
+        > table: data dictionnary for the given MAC profile
     '''
     # Create the table
     table = PrettyTable(["Layer", "MAC index", "Input Shape", "Output shape", "N_param", "N_MAC", "N_operations", "N_memory_access"])
@@ -278,8 +278,8 @@ def print_dict(profiled_dict):
     table.add_row(["TOTAL", "", "", "", "{0:,}".format(profiled_dict["TOTAL"]["nb_params"]), "{0:,}".format(profiled_dict["TOTAL"]["N_MAC"]), \
                     "{0:,}".format(profiled_dict["TOTAL"]["N_operations"]), "{0:,}".format(profiled_dict["TOTAL"]["N_memory_access"])])
     
-    # Print table
-    print(table)
+    # Return table
+    return str(table)
 
 #################################################
 # COMPARE_PROFILE
@@ -331,7 +331,7 @@ def print_comparison(comparison_summary):
     Input:
         > comparison_summary: comparison summary dictionary (with function: compare_profile)
     Output:
-        => print the dictionary
+        > table
     '''
     # Create the table
     table = PrettyTable(["Layer", "Nominal MAC", "Nominal Operation", \
@@ -349,5 +349,5 @@ def print_comparison(comparison_summary):
                        "{0:,}".format(comparison_summary[layer]["mem_ours-nom"]), "{0:,}".format(comparison_summary[layer]["mem_oqa-nom"])])
     # End for
 
-    # Print table
-    print(table)
+    # Return table
+    return str(table)
